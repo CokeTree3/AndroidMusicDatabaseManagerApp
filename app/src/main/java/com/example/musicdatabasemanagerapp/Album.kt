@@ -1,9 +1,12 @@
 package com.example.musicdatabasemanagerapp
 
+import android.graphics.Bitmap
+
 class Album {
     var trackCount: Int = 0
     var name: String = ""
     var toBeRemoved: Boolean = false
+    var coverImage: Bitmap? = null
 
     private val trackMap = mutableMapOf<String, Track>()
     private var sortedTrackList = mutableListOf<Track>()

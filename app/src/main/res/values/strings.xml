@@ -3,4 +3,5 @@
     <string name="local_library_title">Local Library</string>
     <string name="lib_placeholder_string">LIB PLACEHOLDER  REPLACE WITH LIB CONTENT</string>
     <string name="hello_world_string">Hello World</string>
+    <string name="album_cover_image_alt_text">Album cover image</string>
 </resources>

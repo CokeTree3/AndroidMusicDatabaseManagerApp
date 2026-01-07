@@ -1,10 +1,13 @@
 package com.example.musicdatabasemanagerapp
 
 import android.content.ContentResolver
+import android.content.ContentUris
 import android.content.Context
 import android.database.Cursor
 import android.os.Build
 import android.provider.MediaStore
+import android.util.Size
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 class Library {
@@ -14,21 +17,6 @@ class Library {
     private var sortedArtistList = mutableListOf<Artist>()
     private var listInvalid: Boolean = true
     val artistList: List<Artist> get() = if(listInvalid) sortedArtistListAlphabetically() else sortedArtistList
-
-    fun addToLibrary(name: String, artist: Artist): Int{
-        artistMap.getOrPut(name) { artist }
-        return artistMap.size
-    }
-
-    fun addToLibrary(name: String, dirPath: String): Int {
-        //artistMap.getOrPut(name) { Artist(name, dirPath) }
-        return artistMap.size
-    }
-
-    fun addToLibrary(toCopyFrom: Artist, name: String): Int {
-        artistMap.getOrPut(name) { Artist(toCopyFrom) }
-        return artistMap.size
-    }
 
     fun sortedArtistListAlphabetically(): List<Artist>{
         if(listInvalid){
@@ -56,7 +44,9 @@ class Library {
         val projection = arrayOf(MediaStore.Audio.Media.DISPLAY_NAME,               // Grab media file filename, path, track name and track order from MediaStore
             MediaStore.Audio.Media.RELATIVE_PATH,
             MediaStore.Audio.Media.TITLE,
-            MediaStore.Audio.Media.TRACK)
+            MediaStore.Audio.Media.TRACK,
+            MediaStore.Audio.Media.ALBUM_ID,
+            MediaStore.Audio.Media._ID)
 
         val selection = "${MediaStore.Audio.Media.DURATION} >= ?"
         val selectionArgs = arrayOf(
@@ -80,6 +70,8 @@ class Library {
             val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
             val orderColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TRACK)
 
+            val albumIDColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
+            val trackIDColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
             println("before loop")
 
             var prevArtist: Artist
@@ -91,6 +83,8 @@ class Library {
                 val name = cursor.getString(nameColumn)
                 val relPath = cursor.getString(relPathColumn)           // Artist and album names query from track data and rename directory if mismatched
                 val trackOrderString = cursor.getString(orderColumn)
+                val albumID = cursor.getLong(albumIDColumn)
+                val trackID = cursor.getLong(trackIDColumn)
 
                 //println("full path: $relPath$fileName")
 
@@ -103,7 +97,17 @@ class Library {
                 val curAlbum = curArtist.mapGetOrPut(albumName) // Maybe also coverBuf
                 val curTrack = curAlbum.mapGetOrPut(name, fileName, trackOrderString)
 
-                
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        val uri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, trackID)
+                        curAlbum.coverImage = context.contentResolver.loadThumbnail(uri, Size(48, 48), null)
+                    } else{
+                        // Need to query Audio.Album table for AlbumID row
+                    }
+
+                } catch (e: IOException){
+                    curAlbum.coverImage = null
+                }
             }
         }
 

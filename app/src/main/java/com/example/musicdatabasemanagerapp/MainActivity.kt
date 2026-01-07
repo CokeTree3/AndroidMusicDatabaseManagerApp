@@ -1,23 +1,24 @@
 package com.example.musicdatabasemanagerapp
 
-import android.os.Bundle
-import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
-import android.provider.MediaStore
+import android.os.Bundle
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
-import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+
 
 const val REQUEST_PERMISSION_CODE = 4723
 
 class MainActivity : AppCompatActivity() {
 
     val localLibrary: Library = Library()
+    private lateinit var mainRecView: RecyclerView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -45,10 +46,12 @@ class MainActivity : AppCompatActivity() {
         if(checkSelfPermission(android.Manifest.permission.READ_MEDIA_AUDIO) == PackageManager.PERMISSION_GRANTED){
             localLibrary.buildLocal(this)
         }
-    }
 
-    fun addText(field : TextView, s : String){
-        field.text = s;
+        mainRecView = findViewById(R.id.mainView)
+
+        mainRecView.layoutManager = LinearLayoutManager(this)
+        mainRecView.adapter = ArtistAdapter(localLibrary.artistList)
+
     }
 
     private fun requestPermissions() {
