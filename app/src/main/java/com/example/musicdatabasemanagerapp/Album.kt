@@ -7,6 +7,7 @@ class Album {
     var name: String = ""
     var toBeRemoved: Boolean = false
     var coverImage: Bitmap? = null
+    var trackListExpanded = false
 
     private val trackMap = mutableMapOf<String, Track>()
     private var sortedTrackList = mutableListOf<Track>()

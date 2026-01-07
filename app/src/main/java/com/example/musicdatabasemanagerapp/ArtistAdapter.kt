@@ -10,8 +10,6 @@ import androidx.recyclerview.widget.RecyclerView
 class ArtistAdapter(private val artistList: List<Artist>) : RecyclerView.Adapter<ArtistAdapter.ViewHolder>()  {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
-        // inflates the card_view_design view
-        // that is used to hold list item
         val view = LayoutInflater.from(parent.context)
             .inflate(R.layout.artist_block, parent, false)
 
@@ -22,10 +20,14 @@ class ArtistAdapter(private val artistList: List<Artist>) : RecyclerView.Adapter
         val artist = artistList[position]
         holder.artistName.text = artist.name
 
-        holder.albumBlockView.apply {
-            layoutManager = LinearLayoutManager(context)
-            adapter = AlbumAdapter(artist.albumList)
-        }
+        val albumListAdapter = AlbumAdapter(artist.albumList)
+        albumListAdapter.setOnClickListener(object : AlbumAdapter.OnClickListener {})
+
+        holder.albumBlockView.layoutManager = LinearLayoutManager(holder.albumBlockView.context)
+        holder.albumBlockView.adapter = albumListAdapter
+
+        // Add animation for trackList dropdown
+
     }
 
     override fun getItemCount(): Int {
@@ -33,7 +35,7 @@ class ArtistAdapter(private val artistList: List<Artist>) : RecyclerView.Adapter
     }
 
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
-        val artistName: TextView = itemView.findViewById(R.id.artistName)
+        val artistName: TextView = view.findViewById(R.id.artistName)
         val albumBlockView: RecyclerView = view.findViewById(R.id.albumView)
     }
 }
