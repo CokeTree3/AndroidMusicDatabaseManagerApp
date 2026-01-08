@@ -15,16 +15,16 @@ class AlbumAdapter(private val albumList: List<Album>) : RecyclerView.Adapter<Al
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val view = LayoutInflater.from(parent.context)
             .inflate(R.layout.album_block, parent, false)
-
         return ViewHolder(view)
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val album = albumList[position]
         holder.albumName.text = album.name
+        val coverImage = album.getCoverImage(holder.albumCover.context)
 
-        if(album.coverImage != null) {
-            holder.albumCover.setImageBitmap(album.coverImage)
+        if(coverImage != null){
+            holder.albumCover.setImageBitmap(coverImage)
         }
 
         holder.trackView.apply {

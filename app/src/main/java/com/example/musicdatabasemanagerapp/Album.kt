@@ -1,12 +1,17 @@
 package com.example.musicdatabasemanagerapp
 
+import android.content.Context
 import android.graphics.Bitmap
+import android.net.Uri
+import android.os.Build
+import android.util.Size
+import java.io.IOException
+
 
 class Album {
-    var trackCount: Int = 0
     var name: String = ""
     var toBeRemoved: Boolean = false
-    var coverImage: Bitmap? = null
+    var coverImage: Uri = Uri.EMPTY
     var trackListExpanded = false
 
     private val trackMap = mutableMapOf<String, Track>()
@@ -33,7 +38,25 @@ class Album {
             sortedTrackList = trackMap.values.sortedBy { it.order } as MutableList<Track>
             listInvalid = false
         }
+
         return sortedTrackList
+    }
+
+    fun getCoverImage(context: Context): Bitmap? {
+        try{
+            if(coverImage != Uri.EMPTY) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    return context.contentResolver.loadThumbnail(coverImage, Size(48, 48), null)
+                }
+
+                return null
+            }
+        } catch (e: IOException){
+            println("Missing Cover for $name")
+            return null
+        }
+
+        return null
     }
 
     fun printData(){

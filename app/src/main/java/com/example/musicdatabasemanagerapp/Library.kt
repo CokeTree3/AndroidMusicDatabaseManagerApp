@@ -1,12 +1,11 @@
 package com.example.musicdatabasemanagerapp
 
-import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.Context
-import android.database.Cursor
+import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
-import android.util.Size
+import androidx.core.database.getStringOrNull
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
@@ -48,7 +47,7 @@ class Library {
             MediaStore.Audio.Media.ALBUM_ID,
             MediaStore.Audio.Media._ID)
 
-        val selection = "${MediaStore.Audio.Media.DURATION} >= ?"
+        val selection = "${MediaStore.Audio.Media.DURATION} >= ? AND " + "${MediaStore.Audio.Media.IS_MUSIC} != 0"
         val selectionArgs = arrayOf(
             TimeUnit.MILLISECONDS.convert(5, TimeUnit.SECONDS).toString()           // Only consider audio files at least 5 seconds long
         )
@@ -72,17 +71,18 @@ class Library {
 
             val albumIDColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
             val trackIDColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
-            println("before loop")
-
-            var prevArtist: Artist
-            var prevAlbum: Album
 
             while (cursor.moveToNext()) {
 
                 val fileName = cursor.getString(filenameColumn)
                 val name = cursor.getString(nameColumn)
                 val relPath = cursor.getString(relPathColumn)           // Artist and album names query from track data and rename directory if mismatched
-                val trackOrderString = cursor.getString(orderColumn)
+
+                if(!relPath.startsWith("Music/")){
+                    continue
+                }
+
+                var trackOrderString = cursor.getStringOrNull(orderColumn)
                 val albumID = cursor.getLong(albumIDColumn)
                 val trackID = cursor.getLong(trackIDColumn)
 
@@ -91,22 +91,26 @@ class Library {
                 val artistName = relPath.substringAfter("/").substringBefore("/")
                 val albumName = relPath.substringBeforeLast("/").substringAfterLast("/")
 
-                //println("$artistName:  $albumName")
-
                 val curArtist = artistMap.getOrPut(artistName) { Artist(artistName) }
-                val curAlbum = curArtist.mapGetOrPut(albumName) // Maybe also coverBuf
+                val curAlbum = curArtist.mapGetOrPut(albumName)
+
+                if(trackOrderString == null){
+                    trackOrderString = "0"
+                }
+
                 val curTrack = curAlbum.mapGetOrPut(name, fileName, trackOrderString)
 
-                try {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        val uri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, trackID)
-                        curAlbum.coverImage = context.contentResolver.loadThumbnail(uri, Size(48, 48), null)
-                    } else{
-                        // Need to query Audio.Album table for AlbumID row
-                    }
+                if(curAlbum.coverImage == Uri.EMPTY) {
+                    try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            curAlbum.coverImage = ContentUris.withAppendedId(MediaStore.Audio.Albums.EXTERNAL_CONTENT_URI, albumID)
+                        } else {
+                            // Need to query Audio.Album table for AlbumID row
+                        }
 
-                } catch (e: IOException){
-                    curAlbum.coverImage = null
+                    } catch (e: IOException) {
+                        curAlbum.coverImage = Uri.EMPTY
+                    }
                 }
             }
         }

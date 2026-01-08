@@ -51,6 +51,7 @@ class MainActivity : AppCompatActivity() {
 
         mainRecView.layoutManager = LinearLayoutManager(this)
         mainRecView.adapter = ArtistAdapter(localLibrary.artistList)
+        mainRecView.setItemViewCacheSize(20)
 
     }
 
