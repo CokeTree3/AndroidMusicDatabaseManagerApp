@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import androidx.core.database.getStringOrNull
+import kotlinx.serialization.json.*
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
@@ -17,6 +18,10 @@ class Library {
     private var listInvalid: Boolean = true
     val artistList: List<Artist> get() = if(listInvalid) sortedArtistListAlphabetically() else sortedArtistList
 
+    fun get(name: String): Artist?{
+        return artistMap[name]
+    }
+
     fun sortedArtistListAlphabetically(): List<Artist>{
         if(listInvalid){
             sortedArtistList = artistMap.values.sortedBy { it.name.lowercase() } as MutableList<Artist>
@@ -24,13 +29,6 @@ class Library {
         }
         return sortedArtistList
     }
-
-    fun printLibContents(){
-        for(artist in artistList){
-            artist.printData()
-        }
-    }
-
 
     fun buildLocal(context: Context) {
         val collection =
@@ -44,8 +42,7 @@ class Library {
             MediaStore.Audio.Media.RELATIVE_PATH,
             MediaStore.Audio.Media.TITLE,
             MediaStore.Audio.Media.TRACK,
-            MediaStore.Audio.Media.ALBUM_ID,
-            MediaStore.Audio.Media._ID)
+            MediaStore.Audio.Media.ALBUM_ID)
 
         val selection = "${MediaStore.Audio.Media.DURATION} >= ? AND " + "${MediaStore.Audio.Media.IS_MUSIC} != 0"
         val selectionArgs = arrayOf(
@@ -70,7 +67,6 @@ class Library {
             val orderColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TRACK)
 
             val albumIDColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
-            val trackIDColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
 
             while (cursor.moveToNext()) {
 
@@ -84,9 +80,6 @@ class Library {
 
                 var trackOrderString = cursor.getStringOrNull(orderColumn)
                 val albumID = cursor.getLong(albumIDColumn)
-                val trackID = cursor.getLong(trackIDColumn)
-
-                //println("full path: $relPath$fileName")
 
                 val artistName = relPath.substringAfter("/").substringBefore("/")
                 val albumName = relPath.substringBeforeLast("/").substringAfterLast("/")
@@ -103,19 +96,26 @@ class Library {
                 if(curAlbum.coverImage == Uri.EMPTY) {
                     try {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                            curAlbum.coverImage = ContentUris.withAppendedId(MediaStore.Audio.Albums.EXTERNAL_CONTENT_URI, albumID)
+                            curAlbum.coverImage = ContentUris.withAppendedId(
+                                MediaStore.Audio.Albums.EXTERNAL_CONTENT_URI,
+                                albumID
+                            )
                         } else {
-                            // Need to query Audio.Album table for AlbumID row
+                            // TODO Need to query Audio.Album table for AlbumID row
                         }
 
                     } catch (e: IOException) {
                         curAlbum.coverImage = Uri.EMPTY
                     }
+
                 }
             }
         }
-
         listInvalid = true
+    }
+
+    fun buildJson(): JsonObject{
+        return JsonObject(mapOf("artists" to JsonArray(artistMap.map {it.value.getJson()})))
     }
 
 }

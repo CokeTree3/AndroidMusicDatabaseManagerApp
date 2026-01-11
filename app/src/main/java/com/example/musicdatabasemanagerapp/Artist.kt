@@ -1,15 +1,22 @@
 package com.example.musicdatabasemanagerapp
 
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+
+
 class Artist {
-    var albumCount: Int = 0
     var name: String = ""
     var toBeRemoved: Boolean = false
 
-    private var sortedAlbumList = mutableListOf<Album>()
-    private var listInvalid: Boolean = true
-    val albumList: List<Album> get() = if(listInvalid) sortedAlbumListAlphabetically() else sortedAlbumList
-
     private val albumMap = mutableMapOf<String, Album>()
+    private var listInvalid: Boolean = true
+
+    private var sortedAlbumList = mutableListOf<Album>()
+    val albumList: List<Album> get() {
+        return if(listInvalid) sortedAlbumListAlphabetically() else sortedAlbumList
+    }
 
     constructor(name: String){
         this.name = name
@@ -18,6 +25,15 @@ class Artist {
     constructor(toCopyFrom: Artist, fullPath: String = "", libPath: String = ""){
         this.name = toCopyFrom.name
 
+    }
+
+    fun getJson(): JsonElement {
+        return JsonObject(
+            mapOf(
+                "name" to JsonPrimitive(name),
+                "albums" to JsonArray(albumMap.map { it.value.getJson() })
+            )
+        )
     }
 
     fun mapGetOrPut(albumName: String): Album{
@@ -31,12 +47,5 @@ class Artist {
             listInvalid = false
         }
         return sortedAlbumList
-    }
-
-    fun printData(){
-        println("$name: ")
-        for(album in albumList){
-            album.printData()
-        }
     }
 }

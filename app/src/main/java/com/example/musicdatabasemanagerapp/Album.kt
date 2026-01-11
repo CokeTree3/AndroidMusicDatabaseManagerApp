@@ -5,8 +5,13 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.util.Size
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.encodeToJsonElement
 import java.io.IOException
-
 
 class Album {
     var name: String = ""
@@ -15,13 +20,25 @@ class Album {
     var trackListExpanded = false
 
     private val trackMap = mutableMapOf<String, Track>()
-    private var sortedTrackList = mutableListOf<Track>()
     private var listInvalid: Boolean = true
-    val trackList: List<Track> get() = if(listInvalid) sortedTrackListByOrder() else sortedTrackList
+    private var sortedTrackList = mutableListOf<Track>()
+
+    val trackList: List<Track> get() {
+        return if(listInvalid) sortedTrackListByOrder() else sortedTrackList
+    }
 
 
     constructor(name: String){
         this.name = name
+    }
+
+    fun getJson(): JsonElement{
+        return JsonObject(
+            mapOf(
+                "name" to JsonPrimitive(name),
+                "tracks" to JsonArray(trackMap.map {track -> Json.encodeToJsonElement(track)})
+            )
+        )
     }
 
     fun mapGetOrPut(trackName: String): Track{
@@ -57,13 +74,5 @@ class Album {
         }
 
         return null
-    }
-
-    fun printData(){
-        println("\t$name: ")
-        for(track in trackList){
-            print("\t\t")
-            track.printData()
-        }
     }
 }

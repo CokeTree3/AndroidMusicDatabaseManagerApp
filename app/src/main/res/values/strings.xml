@@ -6,4 +6,8 @@
     <string name="album_cover_image_alt_text">Album cover image</string>
     <string name="missing_album_title_string">missing album title</string>
     <string name="missing_track_title_string">missing track title</string>
+    <string name="sync_start_string">Sync Now</string>
+    <string name="sync_stop_string">Stop Sync</string>
+    <string name="server_start_string">Enable Server</string>
+    <string name="server_stop_string">Stop Server</string>
 </resources>
