@@ -118,4 +118,11 @@ class Library {
         return JsonObject(mapOf("artists" to JsonArray(artistMap.map {it.value.getJson()})))
     }
 
+    fun buildDiff(remoteLibJson: JsonArray): Library{
+
+        remoteLibJson.forEach { artistJson -> println(artistJson.jsonObject["name"]) }
+
+        return Library()
+    }
+
 }
