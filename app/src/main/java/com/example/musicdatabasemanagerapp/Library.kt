@@ -1,9 +1,12 @@
 package com.example.musicdatabasemanagerapp
 
 import android.content.ContentUris
+import android.content.ContentValues
 import android.content.Context
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import android.provider.MediaStore
 import androidx.core.database.getStringOrNull
 import kotlinx.serialization.json.*
@@ -28,6 +31,14 @@ class Library {
             listInvalid = false
         }
         return sortedArtistList
+    }
+
+    fun addArtist(artist: Artist){
+        if(artistMap.containsKey(artist.name)) {
+            // Throw error
+        } else{
+            artistMap[artist.name] = artist
+        }
     }
 
     fun buildLocal(context: Context) {
@@ -114,15 +125,84 @@ class Library {
         listInvalid = true
     }
 
+    fun insertTrack(context: Context, trackFileBuf: ByteArray, fileName: String, albumName: String, artistName: String, trackOrder: Int){
+
+        // TODO Each track is inserted individually, might cause slowdowns, test batch insertion
+
+        val resolver = context.contentResolver
+
+        val collection =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+            }else {
+                MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+            }
+
+        val relPath = Environment.DIRECTORY_MUSIC + "/$artistName/$albumName/"
+
+        val trackData = ContentValues().apply {
+            put(MediaStore.Audio.Media.DISPLAY_NAME, fileName)
+            put(MediaStore.Audio.Media.IS_MUSIC, 1)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(MediaStore.Audio.Media.RELATIVE_PATH, relPath)          // TODO if < Build.VERSION_CODES.Q, rel path is ignored, so tracks wont be added to subfolders
+                put(MediaStore.Audio.Media.IS_PENDING, 1)
+            }
+        }
+
+        val songContentUri = resolver.insert(collection, trackData)
+
+        resolver.openOutputStream(songContentUri!!).use { stream ->
+            stream!!.write(trackFileBuf)
+            stream.flush()
+        }
+
+        trackData.clear()
+        trackData.put(MediaStore.Audio.Media.IS_PENDING, 0)
+        resolver.update(songContentUri, trackData, null, null)
+
+        val trackName = MediaMetadataRetriever().let { retriever ->
+            try{
+                retriever.setDataSource(context, songContentUri)
+                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
+            }finally {
+                retriever.release()
+            }
+        }
+
+        val curArtist = artistMap.getOrPut(artistName) { Artist(artistName) }
+        val curAlbum = curArtist.mapGetOrPut(albumName)
+
+        val curTrack = curAlbum.mapGetOrPut(trackName?: "", fileName, trackOrder)
+
+        if(curAlbum.coverImage == Uri.EMPTY) {
+            // TODO New albums wont have cover image loaded until app restart
+        }
+
+    }
+
     fun buildJson(): JsonObject{
         return JsonObject(mapOf("artists" to JsonArray(artistMap.map {it.value.getJson()})))
     }
 
     fun buildDiff(remoteLibJson: JsonArray): Library{
 
-        remoteLibJson.forEach { artistJson -> println(artistJson.jsonObject["name"]) }
+        val diffLib = Library()
 
-        return Library()
+        remoteLibJson.forEach { elem ->
+            val artistJson = elem.jsonObject
+            val locArtist = artistMap[artistJson["name"]!!.jsonPrimitive.content]
+            if(locArtist != null){
+                val artistDiff = locArtist.getDiff(artistJson)
+                if(artistDiff != null && !artistDiff.isEmpty()){
+                    diffLib.addArtist(artistDiff)
+                }
+                //println("changed artist contents for " + artistJson["name"]!!.jsonPrimitive.content)
+            }else{
+                diffLib.addArtist(Artist(artistJson))
+            }
+        }
+
+        return diffLib
     }
 
 }

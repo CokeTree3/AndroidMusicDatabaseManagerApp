@@ -18,6 +18,12 @@ class Track {
         this.name = name
     }
 
+    constructor(name: String, fileName: String, order: Int){
+        this.name = name
+        this.fileName = fileName
+        this.order = order
+    }
+
     constructor(name: String, fileName: String, order: String){
         this.name = name
         this.fileName = fileName

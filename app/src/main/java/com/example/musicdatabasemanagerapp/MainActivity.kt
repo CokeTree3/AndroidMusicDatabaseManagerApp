@@ -1,5 +1,6 @@
 package com.example.musicdatabasemanagerapp
 
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -22,12 +23,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 
 
 const val REQUEST_PERMISSION_CODE = 4723
@@ -76,14 +73,6 @@ class MainActivity : AppCompatActivity() {
 
         if(checkSelfPermission(android.Manifest.permission.READ_MEDIA_AUDIO) == PackageManager.PERMISSION_GRANTED){
             localLibrary.buildLocal(this)
-            val printArg = Json{prettyPrint = true}
-            val libJson = localLibrary.buildJson()
-
-            /*if(libJson.containsKey("artists")){
-                libJson["artists"]!!.jsonArray.forEach { println(it.jsonObject["name"]!!.jsonPrimitive.content)}
-            }*/
-
-            //println(printArg.encodeToString(libJson) )
         }
 
         mainRecView = findViewById(R.id.mainView)
@@ -113,9 +102,9 @@ class MainActivity : AppCompatActivity() {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
 
                 launch {
-                    mainViewModel.diffLib.collect { data ->
+                    mainViewModel.diffLibStateFlow.collect { data ->
                         if (data != null) {
-                            tt(data)
+                            implementDiff(data)
                         }
                     }
                 }
@@ -125,11 +114,30 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun tt(diffLib: Library){
-        println("in buildDiff")
+    private fun implementDiff(diffLib: Library){
+        println("diff Built")
 
-        if(diffLib.artistList.isNotEmpty()) {
-            diffLib.artistList[0].name
+        // Display selection popup
+
+        dataSyncCallback()
+        mainViewModel.syncFromDiff(this)
+
+        // returns immediately, do nothing here
+
+    }
+
+    fun dataSyncCallback(){
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                launch {
+                    mainViewModel.syncActive.collect { data ->
+                        if (!data) {
+                            println("\nsync finished\n")
+                            // syncBtnOnClick()
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -162,8 +170,9 @@ class MainViewModel: ViewModel() {
     val mainLibrary = Library()
     var btnActionEnabled = false
     val networking = Network()
+    val syncActive = MutableStateFlow<Boolean>(false)
     private val _diffLib = MutableStateFlow<Library?>(null)
-    val diffLib: StateFlow<Library?> = _diffLib
+    val diffLibStateFlow: StateFlow<Library?> = _diffLib
 
     fun clientConnect(address: String) {
 
@@ -189,6 +198,61 @@ class MainViewModel: ViewModel() {
             }
 
         }
+    }
+
+    @OptIn(ExperimentalStdlibApi::class)
+    fun syncFromDiff(context: Context){
+        if(diffLibStateFlow.value == null) {
+            println("call to empty diff")
+            btnActionEnabled = false
+            return
+        }
+
+        val diffLib: Library = diffLibStateFlow.value!!
+        syncActive.value = true
+
+        viewModelScope.launch(Dispatchers.IO) {
+            for(artistDiff in diffLib.artistList){
+                for(albumDiff in artistDiff.albumList){
+                    for(track in albumDiff.trackList){
+                        val reqPath = artistDiff.name + "/" + albumDiff.name + "/" + track.fileName
+                        println(reqPath)
+
+                        val trackData = networking.clientRequestData(reqPath)
+
+                        if(trackData != null){
+                            if(trackData[0] == 0x49.toByte() && trackData[1] == 0x44.toByte() && trackData[2] == 0x33.toByte()){
+                                 println("MP3 file header (ID3)")
+                            }else if(trackData[0] == 0x66.toByte() && trackData[1] == 0x4c.toByte() && trackData[2] == 0x61.toByte() && trackData[3] == 0x43.toByte()){
+                                println("FLAC file header (fLaC)")
+                            } else {
+                                println("Unsupported or corrupt file download")
+                                continue
+                            }
+
+                            try{
+                                mainLibrary.insertTrack(context, trackData, track.fileName, albumDiff.name, artistDiff.name, track.order)
+
+                            }catch (e: Exception){
+                                println("Error downloading audio track: $reqPath")
+                            }
+
+                        }
+                        break
+                    }
+                    break
+                }
+                break
+
+                // request data from server for each track, add to mediaStore via mainLib, update mainLib(possibly via recalled buildLocal()(slow as MS queried again)
+
+
+
+
+            }
+            syncActive.value = false
+        }
+        btnActionEnabled = false
     }
 
 }
