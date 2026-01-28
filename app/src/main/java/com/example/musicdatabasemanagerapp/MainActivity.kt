@@ -5,7 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.widget.Button
-import android.widget.TextView
+import android.widget.EditText
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
@@ -13,6 +13,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.ViewModel
 import androidx.activity.viewModels
+import androidx.appcompat.app.AlertDialog
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -20,7 +21,10 @@ import androidx.lifecycle.viewModelScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.jsonArray
@@ -38,8 +42,6 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        val localLibrary: Library = mainViewModel.mainLibrary
-
         setContentView(R.layout.activity_main)
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { v, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
@@ -47,49 +49,61 @@ class MainActivity : AppCompatActivity() {
             insets
         }
 
-        if(checkSelfPermission(android.Manifest.permission.READ_MEDIA_AUDIO) == PackageManager.PERMISSION_GRANTED){
-            println("Granted");
-        }else{
-            println("no perms")
-            requestPermissions()
-        }
-        val textView: TextView = findViewById<TextView>(R.id.lib_title)
-
-        textView.setOnClickListener {
-            Toast.makeText(this, "test msg\n this is very long, does the text wrapping work if needed at all", Toast.LENGTH_SHORT).show()
-        }
-
         val syncBtn = findViewById<Button>(R.id.sync_btn)
 
-        syncBtn.text = if(mainViewModel.btnActionEnabled) {
-                getString(R.string.sync_stop_string)
-            }else {
-                getString(R.string.sync_start_string) }
+        setSyncBtnUIState()
 
-        syncCallback()
         syncBtn.setOnClickListener {
             syncBtnOnClick()
         }
 
-        if(checkSelfPermission(android.Manifest.permission.READ_MEDIA_AUDIO) == PackageManager.PERMISSION_GRANTED){
-            localLibrary.buildLocal(this)
-        }
+        initLibrary()
+
+        syncCallback()
+        dataSyncCallback()
 
         mainRecView = findViewById(R.id.mainView)
-
         mainRecView.layoutManager = LinearLayoutManager(this)
-        mainRecView.adapter = ArtistAdapter(localLibrary.artistList)
+        mainRecView.adapter = ArtistAdapter(mainViewModel.mainLibrary.artistList)
         mainRecView.setItemViewCacheSize(20)
 
     }
 
+    private fun initLibrary(){
+        if(mainViewModel.mainLibrary.libBuilt){
+            return
+        }
+
+        if(checkSelfPermission(android.Manifest.permission.READ_MEDIA_AUDIO) != PackageManager.PERMISSION_GRANTED){
+            println("no perms")
+            requestPermissions()
+        }
+
+        if(checkSelfPermission(android.Manifest.permission.READ_MEDIA_AUDIO) == PackageManager.PERMISSION_GRANTED){
+            mainViewModel.mainLibrary.buildLocal(this)
+        }else {
+            // TODO notification for missing required permissions
+        }
+
+    }
+
+    private fun setSyncBtnUIState(){
+        val syncBtn = findViewById<Button>(R.id.sync_btn)
+
+        syncBtn.text = if(mainViewModel.btnActionEnabled) {
+                getString(R.string.sync_stop_string)
+            } else {
+                getString(R.string.sync_start_string) }
+    }
+
     private fun syncBtnOnClick(){
+        println("onclick")
         val syncBtn = findViewById<Button>(R.id.sync_btn)
         mainViewModel.btnActionEnabled = !mainViewModel.btnActionEnabled
         if(mainViewModel.btnActionEnabled){
             syncBtn.text = getString(R.string.sync_stop_string)
-            // TODO   popup for address,       fork thread, connect on network
-            mainViewModel.clientConnect("10.0.2.2")
+
+            showAddressPopupWindow(mainViewModel::clientConnect)
 
         } else{
             syncBtn.text = getString(R.string.sync_start_string)
@@ -100,11 +114,12 @@ class MainActivity : AppCompatActivity() {
     private fun syncCallback(){
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-
                 launch {
                     mainViewModel.diffLibStateFlow.collect { data ->
                         if (data != null) {
                             implementDiff(data)
+                        } else{
+                            resetSyncState("Server Connection Error")
                         }
                     }
                 }
@@ -115,15 +130,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun implementDiff(diffLib: Library){
-        println("diff Built")
+        if(diffLib.artistList.isEmpty()){
+            println("Local data is up to date")
+            resetSyncState("Local library is already up to date with the server data")
+        } else{
 
-        // Display selection popup
+            // Display selection popup
 
-        dataSyncCallback()
-        mainViewModel.syncFromDiff(this)
-
-        // returns immediately, do nothing here
-
+            mainViewModel.setSyncActive()
+            mainViewModel.syncFromDiff(this)
+        }
     }
 
     fun dataSyncCallback(){
@@ -132,13 +148,60 @@ class MainActivity : AppCompatActivity() {
                 launch {
                     mainViewModel.syncActive.collect { data ->
                         if (!data) {
-                            println("\nsync finished\n")
-                            // syncBtnOnClick()
+                            println("sync finished")
+                            resetSyncState("Sync with server finished")
                         }
                     }
                 }
             }
         }
+    }
+
+    private fun resetSyncState(msg: String?){
+        mainViewModel.resetDiffLib()
+        mainViewModel.btnActionEnabled = false
+        setSyncBtnUIState()
+
+        if(msg != null) {
+            Toast.makeText(this@MainActivity, msg, Toast.LENGTH_SHORT)
+                .show()
+        }
+    }
+
+    private fun showAddressPopupWindow(functionToRun: (input: String) -> Unit){
+        val inputBox = EditText(this)
+        inputBox.hint = "127.0.0.1"
+
+        val testAddress = "10.0.2.2"                                                                // TODO remove for final!!!!!
+        inputBox.setText(testAddress)
+
+        val builder = AlertDialog.Builder(this)
+
+        builder.setMessage("Input Server Address")
+        builder.setView(inputBox)
+        builder.setPositiveButton("Connect") { dialog, id ->
+            val inputString = inputBox.text.toString()
+            var valid = true
+
+            // TODO string validity check
+
+            if(inputString.isEmpty()) {
+                valid = false
+            }
+
+            if(valid){
+                functionToRun(inputString)
+            }else{
+                resetSyncState("Invalid Input")
+            }
+        }
+        builder.setNegativeButton("Cancel") { dialog, id ->
+            resetSyncState(null)
+        }
+
+        val dialog: AlertDialog = builder.create()
+        dialog.show()
+
     }
 
     private fun requestPermissions() {
@@ -170,9 +233,10 @@ class MainViewModel: ViewModel() {
     val mainLibrary = Library()
     var btnActionEnabled = false
     val networking = Network()
-    val syncActive = MutableStateFlow<Boolean>(false)
-    private val _diffLib = MutableStateFlow<Library?>(null)
-    val diffLibStateFlow: StateFlow<Library?> = _diffLib
+    private val _syncActive = MutableStateFlow<Boolean>(false)
+    val syncActive: StateFlow<Boolean> = _syncActive
+    private val _diffLib = MutableSharedFlow<Library?>(1)
+    val diffLibStateFlow: SharedFlow<Library?> = _diffLib
 
     fun clientConnect(address: String) {
 
@@ -181,37 +245,40 @@ class MainViewModel: ViewModel() {
                 return@launch
             }
             mainLibrary.serverActive = true
+            _syncActive.value = true
 
             val serverLibJson = networking.clientConnect(address)
 
             if(serverLibJson != null && serverLibJson.jsonObject.containsKey("artists")){
 
                 try {
-                    _diffLib.value = mainLibrary.buildDiff(serverLibJson.jsonObject["artists"]!!.jsonArray)
+                    _diffLib.emit(mainLibrary.buildDiff(serverLibJson.jsonObject["artists"]!!.jsonArray))
                 }catch (e: Exception){
                     println("Malformed Server json data")
                     // TODO json diff processing errors(invalid server json likely)
                 }
             } else {
                 println("incorrect server data")
-                return@launch
+                mainLibrary.serverActive = false
+                _syncActive.value = false
+                _diffLib.emit(null)
             }
-
         }
     }
 
     @OptIn(ExperimentalStdlibApi::class)
     fun syncFromDiff(context: Context){
-        if(diffLibStateFlow.value == null) {
-            println("call to empty diff")
+        if(_diffLib.replayCache[0] == null) {
+            println("call to no diff")
             btnActionEnabled = false
+            mainLibrary.serverActive = false
             return
         }
 
-        val diffLib: Library = diffLibStateFlow.value!!
-        syncActive.value = true
-
+        val diffLib: Library = _diffLib.replayCache[0]!!
+        _syncActive.value = true
         viewModelScope.launch(Dispatchers.IO) {
+
             for(artistDiff in diffLib.artistList){
                 for(albumDiff in artistDiff.albumList){
                     for(track in albumDiff.trackList){
@@ -237,22 +304,30 @@ class MainViewModel: ViewModel() {
                                 println("Error downloading audio track: $reqPath")
                             }
 
+                        }else{
+                            // TODO error handling(notif main thread on incomplete sync)
                         }
                         break
                     }
                     break
                 }
                 break
-
-                // request data from server for each track, add to mediaStore via mainLib, update mainLib(possibly via recalled buildLocal()(slow as MS queried again)
-
-
-
-
             }
-            syncActive.value = false
+            _syncActive.value = false
         }
+        mainLibrary.serverActive = false
         btnActionEnabled = false
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun resetDiffLib(){
+        _diffLib.resetReplayCache()
+    }
+
+    fun setSyncActive(){
+        if(!_syncActive.value){
+            _syncActive.value = true
+        }
     }
 
 }

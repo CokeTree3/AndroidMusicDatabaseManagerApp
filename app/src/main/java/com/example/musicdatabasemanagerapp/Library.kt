@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit
 
 class Library {
     var serverActive: Boolean = false
-
+    var libBuilt: Boolean = false
     private val artistMap = mutableMapOf<String, Artist>()
     private var sortedArtistList = mutableListOf<Artist>()
     private var listInvalid: Boolean = true
@@ -78,7 +78,6 @@ class Library {
             val orderColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TRACK)
 
             val albumIDColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
-
             while (cursor.moveToNext()) {
 
                 val fileName = cursor.getString(filenameColumn)
@@ -97,7 +96,6 @@ class Library {
 
                 val curArtist = artistMap.getOrPut(artistName) { Artist(artistName) }
                 val curAlbum = curArtist.mapGetOrPut(albumName)
-
                 if(trackOrderString == null){
                     trackOrderString = "0"
                 }
@@ -123,6 +121,7 @@ class Library {
             }
         }
         listInvalid = true
+        libBuilt = true
     }
 
     fun insertTrack(context: Context, trackFileBuf: ByteArray, fileName: String, albumName: String, artistName: String, trackOrder: Int){
@@ -202,6 +201,7 @@ class Library {
             }
         }
 
+        diffLib.libBuilt = true;
         return diffLib
     }
 

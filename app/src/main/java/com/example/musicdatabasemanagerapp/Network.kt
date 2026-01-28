@@ -19,6 +19,7 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.ktor.network.sockets.isClosed
 import kotlinx.coroutines.isActive
 import kotlinx.serialization.json.Json
+import java.net.ConnectException
 
 const val DEFAULT_PORT_NUM = 41845
 const val SERVER_REQUEST_JSON = "SRQ\n"
@@ -80,8 +81,16 @@ class Network {
             println("already open")
             return
         }
-        socket = aSocket(ActorSelectorManager(Dispatchers.IO)).tcp()
-            .connect(InetSocketAddress(address, DEFAULT_PORT_NUM))
+        try{
+            socket = aSocket(ActorSelectorManager(Dispatchers.IO)).tcp()
+                .connect(InetSocketAddress(address, DEFAULT_PORT_NUM))
+        } catch (e: ConnectException){
+            println("Connection to server failed!! \nReason: " + e.message)
+            socket = null
+            return
+        }
+
+
 
         lastAddress = address
 
@@ -96,7 +105,10 @@ class Network {
         println("conn called")
 
         openConnection(address)
-
+        if(socket == null){
+            // TODO better error handling
+            return null
+        }
 
         try{
             sendData(SERVER_REQUEST_JSON, SERVER_REQUEST_JSON.length)
