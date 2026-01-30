@@ -32,14 +32,14 @@ class AlbumAdapter(private val albumList: List<Album>) : RecyclerView.Adapter<Al
             adapter = TrackAdapter(album.trackList)
         }
 
-        if(album.trackListExpanded){
+        if(album.innerListExpanded){
             holder.trackView.visibility = View.VISIBLE
         }else {
             holder.trackView.visibility = View.GONE
         }
 
         holder.itemView.setOnClickListener {
-            album.trackListExpanded = !album.trackListExpanded
+            album.innerListExpanded = !album.innerListExpanded
             notifyItemChanged(position)
 
             onClickListener?.onClick(holder, position, album)

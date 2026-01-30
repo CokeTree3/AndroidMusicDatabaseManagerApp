@@ -13,6 +13,32 @@ import kotlinx.serialization.json.*
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
+enum class ClassType{
+    ARTIST,
+    ALBUM,
+    TRACK,
+}
+
+abstract class LibraryData{
+    abstract var name: String
+    abstract val type: ClassType
+    abstract var toBeRemoved: Boolean
+    open var innerListExpanded = false
+
+    var isChecked = true
+
+    fun invertCheck(){
+        isChecked = !isChecked
+        if(!isEmpty()){
+            dataList.forEach { it.invertCheck() }
+        }
+    }
+
+    open val dataList: List<LibraryData> get() { return emptyList()}
+
+    open fun isEmpty(): Boolean = true
+}
+
 class Library {
     var serverActive: Boolean = false
     var libBuilt: Boolean = false

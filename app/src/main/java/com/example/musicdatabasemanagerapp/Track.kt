@@ -8,11 +8,12 @@ import kotlinx.serialization.Transient
 
 @SuppressLint("UnsafeOptInUsageError")
 @Serializable
-class Track {
-    var name: String = ""
+class Track : LibraryData {
+    override var name: String = ""
     var order: Int = 0
     var fileName: String = ""
-    @Transient var toBeRemoved: Boolean = false
+    @Transient override var toBeRemoved: Boolean = false
+    @Transient override val type = ClassType.TRACK
 
     constructor(name: String){
         this.name = name
@@ -35,19 +36,4 @@ class Track {
             }
         }
     }
-
-    /*constructor(json: String){
-        val jsonData = Json.decodeFromString<TrackJSON>(json)
-
-        this.name = jsonData.name
-        this.order = jsonData.order
-        this.fileName = jsonData.fileName
-    }*/
-
-    /*fun getJSON(): String{
-        return Json.encodeToString(TrackJSON(name, fileName, order))
-    }
-
-    @Serializable
-    data class TrackJSON(val name: String, val fileName: String, val order: Int)*/
 }

@@ -17,11 +17,12 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.IOException
 
-class Album {
-    var name: String = ""
-    var toBeRemoved: Boolean = false
+class Album : LibraryData {
+    override var name: String = ""
+    override var toBeRemoved: Boolean = false
     var coverImage: Uri = Uri.EMPTY
-    var trackListExpanded = false
+    override var innerListExpanded = false
+    override val type = ClassType.ALBUM
 
     private val trackMap = mutableMapOf<String, Track>()
     private var listInvalid: Boolean = true
@@ -30,6 +31,8 @@ class Album {
     val trackList: List<Track> get() {
         return if(listInvalid) sortedTrackListByOrder() else sortedTrackList
     }
+
+    override val dataList: List<Track> get() { return trackList}
 
 
     constructor(name: String){
@@ -45,7 +48,7 @@ class Album {
         }
     }
 
-    fun isEmpty(): Boolean{
+    override fun isEmpty(): Boolean{
         return trackMap.isEmpty()
     }
 
@@ -104,13 +107,13 @@ class Album {
 
     fun mapGetOrPut(trackName: String, fileName: String, order: String): Track{
         listInvalid = true
-        trackListExpanded = false
+        innerListExpanded = false
         return trackMap.getOrPut(trackName) { Track(trackName, fileName, order) }
     }
 
     fun mapGetOrPut(trackName: String, fileName: String, order: Int): Track{
         listInvalid = true
-        trackListExpanded = false
+        innerListExpanded = false
         return trackMap.getOrPut(trackName) { Track(trackName, fileName, order) }
     }
 

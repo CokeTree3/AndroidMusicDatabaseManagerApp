@@ -9,9 +9,11 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 
-class Artist {
-    var name: String = ""
-    var toBeRemoved: Boolean = false
+class Artist : LibraryData {
+    override var name: String = ""
+    override var toBeRemoved: Boolean = false
+    override val type = ClassType.ARTIST
+    override var innerListExpanded = false
 
     private val albumMap = mutableMapOf<String, Album>()
     private var listInvalid: Boolean = true
@@ -20,6 +22,8 @@ class Artist {
     val albumList: List<Album> get() {
         return if(listInvalid) sortedAlbumListAlphabetically() else sortedAlbumList
     }
+
+    override val dataList: List<Album> get() { return albumList}
 
     constructor(name: String){
         this.name = name
@@ -34,12 +38,7 @@ class Artist {
         }
     }
 
-    constructor(toCopyFrom: Artist, fullPath: String = "", libPath: String = ""){
-        this.name = toCopyFrom.name
-
-    }
-
-    fun isEmpty(): Boolean{
+    override fun isEmpty(): Boolean{
         return albumMap.isEmpty()
     }
 
