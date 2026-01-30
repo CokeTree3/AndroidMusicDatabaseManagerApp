@@ -10,4 +10,8 @@
     <string name="sync_stop_string">Stop Sync</string>
     <string name="server_start_string">Enable Server</string>
     <string name="server_stop_string">Stop Server</string>
+    <string name="missing_artist_name">Artist Name</string>
+    <string name="cancel_string">Cancel</string>
+    <string name="sync_string">Sync</string>
+    <string name="track_default_order_prefix">"1: "</string>
 </resources>

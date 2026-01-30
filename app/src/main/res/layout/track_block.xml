@@ -11,7 +11,7 @@
         android:layout_marginTop="8dp"
         android:layout_marginEnd="8dp"
         android:layout_marginBottom="8dp"
-        android:text="1: "
+        android:text="@string/track_default_order_prefix"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toStartOf="@+id/trackName"
         app:layout_constraintTop_toTopOf="parent" />

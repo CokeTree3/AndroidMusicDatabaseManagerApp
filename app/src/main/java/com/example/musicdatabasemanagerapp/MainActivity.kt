@@ -1,9 +1,12 @@
 package com.example.musicdatabasemanagerapp
 
+import android.app.Dialog
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.Toast
@@ -21,7 +24,6 @@ import androidx.lifecycle.viewModelScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -29,6 +31,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import androidx.core.graphics.drawable.toDrawable
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 
 
 const val REQUEST_PERMISSION_CODE = 4723
@@ -99,6 +103,7 @@ class MainActivity : AppCompatActivity() {
     private fun syncBtnOnClick(){
         println("onclick")
         val syncBtn = findViewById<Button>(R.id.sync_btn)
+
         mainViewModel.btnActionEnabled = !mainViewModel.btnActionEnabled
         if(mainViewModel.btnActionEnabled){
             syncBtn.text = getString(R.string.sync_stop_string)
@@ -117,7 +122,7 @@ class MainActivity : AppCompatActivity() {
                 launch {
                     mainViewModel.diffLibStateFlow.collect { data ->
                         if (data != null) {
-                            implementDiff(data)
+                            showSyncSelectionPopup(data)
                         } else{
                             resetSyncState("Server Connection Error")
                         }
@@ -129,17 +134,45 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun implementDiff(diffLib: Library){
+    private fun showSyncSelectionPopup(diffLib: Library){
+
         if(diffLib.artistList.isEmpty()){
             println("Local data is up to date")
             resetSyncState("Local library is already up to date with the server data")
-        } else{
-
-            // Display selection popup
-
-            mainViewModel.setSyncActive()
-            mainViewModel.syncFromDiff(this)
+            return
         }
+
+        val syncWindow = Dialog(this)
+
+        syncWindow.setContentView(R.layout.sync_select_window)
+
+        syncWindow.window?.setLayout(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT
+        )
+        syncWindow.window?.setBackgroundDrawable(Color.TRANSPARENT.toDrawable())
+
+        val syncList = syncWindow.findViewById<RecyclerView>(R.id.syncList)
+        syncList.layoutManager = LinearLayoutManager(this)
+        syncList.adapter = SyncArtistAdapter(diffLib.artistList)
+
+        syncWindow.findViewById<Button>(R.id.sync_select_cancel_btn).setOnClickListener {
+            syncWindow.dismiss()
+        }
+
+        syncWindow.findViewById<Button>(R.id.sync_select_ok_btn).setOnClickListener {
+            syncWindow.dismiss()
+            implementDiff(diffLib)
+        }
+
+        syncWindow.show()
+
+    }
+
+    private fun implementDiff(diffLib: Library){
+
+        mainViewModel.setSyncActive()
+        mainViewModel.syncFromDiff(this)
     }
 
     fun dataSyncCallback(){
@@ -150,6 +183,9 @@ class MainActivity : AppCompatActivity() {
                         if (!data) {
                             println("sync finished")
                             resetSyncState("Sync with server finished")
+
+                            // TODO update the UI with the new data
+
                         }
                     }
                 }
@@ -266,7 +302,6 @@ class MainViewModel: ViewModel() {
         }
     }
 
-    @OptIn(ExperimentalStdlibApi::class)
     fun syncFromDiff(context: Context){
         if(_diffLib.replayCache[0] == null) {
             println("call to no diff")
@@ -280,38 +315,54 @@ class MainViewModel: ViewModel() {
         viewModelScope.launch(Dispatchers.IO) {
 
             for(artistDiff in diffLib.artistList){
+                if(!artistDiff.isChecked){
+                    continue
+                }
+
                 for(albumDiff in artistDiff.albumList){
+                    if(!albumDiff.isChecked){
+                        continue
+                    }
+
                     for(track in albumDiff.trackList){
+                        if(!track.isChecked){
+                            continue
+                        }
+
                         val reqPath = artistDiff.name + "/" + albumDiff.name + "/" + track.fileName
                         println(reqPath)
 
-                        val trackData = networking.clientRequestData(reqPath)
+                        try{
+                            val trackData = networking.clientRequestData(reqPath)
+                            val headerMP3 = byteArrayOf(0x49, 0x44, 0x33)
+                            val headerFLAC = byteArrayOf(0x66, 0x4c, 0x61, 0x43)
 
-                        if(trackData != null){
-                            if(trackData[0] == 0x49.toByte() && trackData[1] == 0x44.toByte() && trackData[2] == 0x33.toByte()){
-                                 println("MP3 file header (ID3)")
-                            }else if(trackData[0] == 0x66.toByte() && trackData[1] == 0x4c.toByte() && trackData[2] == 0x61.toByte() && trackData[3] == 0x43.toByte()){
-                                println("FLAC file header (fLaC)")
-                            } else {
-                                println("Unsupported or corrupt file download")
-                                continue
+
+                            if(trackData != null && trackData.size >= 4){
+                                if(trackData.copyOfRange(0, 3).contentEquals(headerMP3)){
+                                    println("MP3 file header (ID3)")
+                                }else if(trackData.copyOfRange(0, 4).contentEquals(headerFLAC)){
+                                    println("FLAC file header (fLaC)")
+                                } else {
+                                    println("Unsupported or corrupt file download")
+                                    continue
+                                }
+
+                                try{
+                                    mainLibrary.insertTrack(context, trackData, track.fileName, albumDiff.name, artistDiff.name, track.order)
+
+                                }catch (e: Exception){
+                                    println("Error downloading audio track: $reqPath")
+                                }
+
+                            }else{
+                                // TODO error handling(notif main thread on incomplete sync)
                             }
-
-                            try{
-                                mainLibrary.insertTrack(context, trackData, track.fileName, albumDiff.name, artistDiff.name, track.order)
-
-                            }catch (e: Exception){
-                                println("Error downloading audio track: $reqPath")
-                            }
-
-                        }else{
+                        }catch (e: Exception){
                             // TODO error handling(notif main thread on incomplete sync)
                         }
-                        break
                     }
-                    break
                 }
-                break
             }
             _syncActive.value = false
         }
