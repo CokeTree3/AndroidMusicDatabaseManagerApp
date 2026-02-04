@@ -1,9 +1,12 @@
 package com.example.musicdatabasemanagerapp
 
+import android.app.Activity
+import android.content.ContentUris
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
+import android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
 import android.util.Size
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -48,6 +51,10 @@ class Album : LibraryData {
         }
     }
 
+    fun get(name: String): Track?{
+        return trackMap[name]
+    }
+
     override fun isEmpty(): Boolean{
         return trackMap.isEmpty()
     }
@@ -73,8 +80,8 @@ class Album : LibraryData {
         if(remoteAlbumJson["name"]!!.jsonPrimitive.content != this.name){
             return null
         }
-        println("Diff for " + this.name)
         val albumDiff = Album(this.name)
+        val mapList = mutableListOf<String>()
 
         remoteAlbumJson["tracks"]!!.jsonArray.forEach { elem ->
             val trackJson = elem.jsonObject
@@ -82,7 +89,6 @@ class Album : LibraryData {
 
             if(locTrack != null){
                 // Track already exists, skip
-                println("\t" + locTrack.name + " already exists")
                 if(locTrack.order != trackJson["order"]!!.jsonPrimitive.content.toInt()){
                     // TODO same track, changed order ir album
                     println("track with changed order: " + locTrack.name + " NOT IMPLEMENTED")
@@ -91,33 +97,56 @@ class Album : LibraryData {
                     // TODO same track but changed filename
                     println("track with changed filename: " + locTrack.name + " NOT IMPLEMENTED")
                 }
-
+                mapList.add(locTrack.name)
             } else{
                 albumDiff.addTrack(Json.decodeFromJsonElement<Track>(trackJson))
             }
 
         }
 
+        for(key in trackMap.keys) {
+            if (!mapList.contains(key)) {
+                albumDiff.addTrack(Track(key))
+                albumDiff.get(key)!!.toBeRemoved = true
+            }
+        }
         return albumDiff
+    }
+
+    fun removeLocalTrack(context: Activity, name: String): Uri?{
+
+        val locTrack = trackMap[name]
+        if(locTrack == null){
+            // TODO throw error
+            println("locTrack is null")
+            return null
+        }
+
+        val trackUri = ContentUris.withAppendedId(EXTERNAL_CONTENT_URI, locTrack.id)
+
+        return trackUri
     }
 
     fun mapGetOrPut(trackName: String): Track{
         return trackMap.getOrPut(trackName) { Track(trackName) }
     }
 
-    fun mapGetOrPut(trackName: String, fileName: String, order: String): Track{
+    fun mapGetOrPut(trackName: String, fileName: String, order: String, id: Long): Track{
         listInvalid = true
         innerListExpanded = false
-        return trackMap.getOrPut(trackName) { Track(trackName, fileName, order) }
+        return trackMap.getOrPut(trackName) { Track(trackName, fileName, order, id) }
     }
 
-    fun mapGetOrPut(trackName: String, fileName: String, order: Int): Track{
+    fun mapGetOrPut(trackName: String, fileName: String, order: Int, id: Long): Track{
         listInvalid = true
         innerListExpanded = false
-        return trackMap.getOrPut(trackName) { Track(trackName, fileName, order) }
+        return trackMap.getOrPut(trackName) { Track(trackName, fileName, order, id) }
     }
 
     fun sortedTrackListByOrder(): List<Track>{
+        if(trackMap.isEmpty()){
+            return emptyList()
+        }
         if(listInvalid){
             sortedTrackList = trackMap.values.sortedBy { it.order } as MutableList<Track>
             listInvalid = false

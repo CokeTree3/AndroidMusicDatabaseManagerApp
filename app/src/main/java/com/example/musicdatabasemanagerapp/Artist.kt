@@ -1,5 +1,7 @@
 package com.example.musicdatabasemanagerapp
 
+import android.app.Activity
+import android.net.Uri
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -38,6 +40,10 @@ class Artist : LibraryData {
         }
     }
 
+    fun get(name: String): Album?{
+        return albumMap[name]
+    }
+
     override fun isEmpty(): Boolean{
         return albumMap.isEmpty()
     }
@@ -65,23 +71,47 @@ class Artist : LibraryData {
         }
 
         val artistDiff = Artist(this.name)
+        val mapList = mutableListOf<String>()
 
         remoteArtistJson["albums"]!!.jsonArray.forEach { elem ->
+
             val albumJson = elem.jsonObject
             val locAlbum = albumMap[albumJson["name"]!!.jsonPrimitive.content]
 
-            if(locAlbum != null){
+            if (locAlbum != null) {
                 val albumDiff = locAlbum.getDiff(albumJson)
-                if(albumDiff != null && !albumDiff.isEmpty()){
+                if (albumDiff != null && !albumDiff.isEmpty()) {
                     artistDiff.addAlbum(albumDiff)
                 }
-            } else{
+                mapList.add(locAlbum.name)
+            } else {
                 artistDiff.addAlbum(Album(albumJson))
             }
-            
         }
 
+        for(key in albumMap.keys) {
+            if (!mapList.contains(key)) {
+                artistDiff.addAlbum(Album(key))
+                artistDiff.get(key)!!.toBeRemoved = true
+            }
+        }
         return artistDiff
+    }
+
+    fun removeLocalAlbum(context: Activity, name: String): List<Uri>?{
+        val locAlbum = albumMap[name]
+        val delList = mutableListOf<Uri>()
+        if(locAlbum == null){
+            // TODO throw error
+            return null
+        }
+
+        for(track in locAlbum.trackList){
+
+            locAlbum.removeLocalTrack(context, track.name)?.let { delList.add(it) }
+        }
+        // TODO empty directory remains
+        return delList
     }
 
     fun mapGetOrPut(albumName: String): Album{
@@ -91,7 +121,7 @@ class Artist : LibraryData {
 
     fun sortedAlbumListAlphabetically(): List<Album>{
         if(albumMap.isEmpty()){
-            return mutableListOf<Album>()
+            return emptyList()
         }
         if(listInvalid){
             sortedAlbumList = albumMap.values.sortedBy { it.name.lowercase() } as MutableList<Album>

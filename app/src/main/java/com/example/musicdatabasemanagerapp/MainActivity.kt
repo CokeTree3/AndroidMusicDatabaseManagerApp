@@ -1,7 +1,7 @@
 package com.example.musicdatabasemanagerapp
 
+import android.app.Activity
 import android.app.Dialog
-import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Build
@@ -158,6 +158,7 @@ class MainActivity : AppCompatActivity() {
 
         syncWindow.findViewById<Button>(R.id.sync_select_cancel_btn).setOnClickListener {
             syncWindow.dismiss()
+            resetSyncState(null)
         }
 
         syncWindow.findViewById<Button>(R.id.sync_select_ok_btn).setOnClickListener {
@@ -183,6 +184,7 @@ class MainActivity : AppCompatActivity() {
                         if (!data) {
                             println("sync finished")
                             resetSyncState("Sync with server finished")
+
 
                             // TODO update the UI with the new data
 
@@ -242,7 +244,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun requestPermissions() {
         if (checkSelfPermission(android.Manifest.permission.READ_MEDIA_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 requestPermissions(arrayOf(android.Manifest.permission.READ_MEDIA_AUDIO), REQUEST_PERMISSION_CODE)
             } else {
@@ -252,9 +253,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        println("callback")
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQUEST_PERMISSION_CODE) {
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                println("Granted")
                 val localLibrary: Library = mainViewModel.mainLibrary
                 localLibrary.buildLocal(this)
             } else {
@@ -269,7 +272,7 @@ class MainViewModel: ViewModel() {
     val mainLibrary = Library()
     var btnActionEnabled = false
     val networking = Network()
-    private val _syncActive = MutableStateFlow<Boolean>(false)
+    private val _syncActive = MutableStateFlow(false)
     val syncActive: StateFlow<Boolean> = _syncActive
     private val _diffLib = MutableSharedFlow<Library?>(1)
     val diffLibStateFlow: SharedFlow<Library?> = _diffLib
@@ -291,6 +294,7 @@ class MainViewModel: ViewModel() {
                     _diffLib.emit(mainLibrary.buildDiff(serverLibJson.jsonObject["artists"]!!.jsonArray))
                 }catch (e: Exception){
                     println("Malformed Server json data")
+                    return@launch
                     // TODO json diff processing errors(invalid server json likely)
                 }
             } else {
@@ -302,7 +306,8 @@ class MainViewModel: ViewModel() {
         }
     }
 
-    fun syncFromDiff(context: Context){
+
+    fun syncFromDiff(context: Activity){
         if(_diffLib.replayCache[0] == null) {
             println("call to no diff")
             btnActionEnabled = false
@@ -318,56 +323,78 @@ class MainViewModel: ViewModel() {
                 if(!artistDiff.isChecked){
                     continue
                 }
-
-                for(albumDiff in artistDiff.albumList){
-                    if(!albumDiff.isChecked){
-                        continue
-                    }
-
-                    for(track in albumDiff.trackList){
-                        if(!track.isChecked){
-                            continue
-                        }
-
-                        val reqPath = artistDiff.name + "/" + albumDiff.name + "/" + track.fileName
-                        println(reqPath)
-
-                        try{
-                            val trackData = networking.clientRequestData(reqPath)
-                            val headerMP3 = byteArrayOf(0x49, 0x44, 0x33)
-                            val headerFLAC = byteArrayOf(0x66, 0x4c, 0x61, 0x43)
-
-
-                            if(trackData != null && trackData.size >= 4){
-                                if(trackData.copyOfRange(0, 3).contentEquals(headerMP3)){
-                                    println("MP3 file header (ID3)")
-                                }else if(trackData.copyOfRange(0, 4).contentEquals(headerFLAC)){
-                                    println("FLAC file header (fLaC)")
-                                } else {
-                                    println("Unsupported or corrupt file download")
-                                    continue
-                                }
-
-                                try{
-                                    mainLibrary.insertTrack(context, trackData, track.fileName, albumDiff.name, artistDiff.name, track.order)
-
-                                }catch (e: Exception){
-                                    println("Error downloading audio track: $reqPath")
-                                }
-
-                            }else{
-                                // TODO error handling(notif main thread on incomplete sync)
-                            }
-                        }catch (e: Exception){
-                            // TODO error handling(notif main thread on incomplete sync)
-                        }
-                    }
-                }
+                syncArtist(context, artistDiff)
+                mainLibrary.execDeleteReq(context)
             }
             _syncActive.value = false
         }
         mainLibrary.serverActive = false
         btnActionEnabled = false
+    }
+
+
+    suspend fun syncArtist(context: Activity, artistDiff: Artist){
+        if(artistDiff.toBeRemoved){
+            mainLibrary.removeLocalArtist(context, artistDiff.name)
+            return
+        }
+
+        for(albumDiff in artistDiff.albumList){
+            if(!albumDiff.isChecked){
+                continue
+            }
+            syncAlbum(context, albumDiff, artistDiff.name)
+        }
+    }
+
+    suspend fun syncAlbum(context: Activity, albumDiff: Album, artistName: String){
+        if(albumDiff.toBeRemoved){
+            mainLibrary.removeLocalAlbum(context, albumDiff.name, artistName)
+            return
+        }
+
+        for(track in albumDiff.trackList){
+            if(!track.isChecked){
+                continue
+            }
+            syncTrack(context, track, albumDiff.name, artistName)
+        }
+    }
+
+    suspend fun syncTrack(context: Activity, trackDiff: Track, albumName: String, artistName: String){
+        if(trackDiff.toBeRemoved){
+            println("To be removed set for " + trackDiff.name)
+            mainLibrary.removeLocalTrack(context, trackDiff.name, artistName, albumName)
+            return
+        }
+
+        val reqPath = artistName + "/" + albumName + "/" + trackDiff.fileName
+        println(reqPath)
+
+        try{
+            val trackData = networking.clientRequestData(reqPath)
+
+            if(trackData != null && trackData.size >= 4){
+                if(trackData.copyOfRange(0, 3).contentEquals(byteArrayOf(0x49, 0x44, 0x33))){
+                    println("MP3 file header (ID3)")
+                }else if(trackData.copyOfRange(0, 4).contentEquals(byteArrayOf(0x66, 0x4c, 0x61, 0x43))){
+                    println("FLAC file header (fLaC)")
+                } else {
+                    println("Unsupported or corrupt file download: $reqPath")
+                    return
+                }
+                try{
+                    mainLibrary.insertTrack(context, trackData, trackDiff.fileName, albumName, artistName, trackDiff.order)
+                }catch (e: Exception){
+                    println("Error downloading audio track: $reqPath")
+                }
+
+            }else{
+                // TODO error handling(notif main thread on incomplete sync)
+            }
+        }catch (e: Exception){
+            // TODO error handling(notif main thread on incomplete sync)
+        }
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)

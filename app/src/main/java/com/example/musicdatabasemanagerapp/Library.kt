@@ -1,5 +1,6 @@
 package com.example.musicdatabasemanagerapp
 
+import android.app.Activity
 import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
@@ -34,6 +35,8 @@ abstract class LibraryData{
         }
     }
 
+    // TODO class parent links
+
     open val dataList: List<LibraryData> get() { return emptyList()}
 
     open fun isEmpty(): Boolean = true
@@ -46,6 +49,7 @@ class Library {
     private var sortedArtistList = mutableListOf<Artist>()
     private var listInvalid: Boolean = true
     val artistList: List<Artist> get() = if(listInvalid) sortedArtistListAlphabetically() else sortedArtistList
+    val delList = mutableListOf<Uri>()
 
     fun get(name: String): Artist?{
         return artistMap[name]
@@ -79,14 +83,15 @@ class Library {
             MediaStore.Audio.Media.RELATIVE_PATH,
             MediaStore.Audio.Media.TITLE,
             MediaStore.Audio.Media.TRACK,
-            MediaStore.Audio.Media.ALBUM_ID)
+            MediaStore.Audio.Media.ALBUM_ID,
+            MediaStore.Audio.Media._ID)
 
         val selection = "${MediaStore.Audio.Media.DURATION} >= ? AND " + "${MediaStore.Audio.Media.IS_MUSIC} != 0"
         val selectionArgs = arrayOf(
             TimeUnit.MILLISECONDS.convert(5, TimeUnit.SECONDS).toString()           // Only consider audio files at least 5 seconds long
         )
 
-        val sortOrder = "${MediaStore.Audio.Media.ARTIST} ASC, " +                  // Sort the data rows in (Artist Name -> Album Name -> track order) way
+        val sortOrder = "${MediaStore.Audio.Media.ARTIST} ASC, " +
                 "${MediaStore.Audio.Media.ALBUM} ASC, " +
                 "${MediaStore.Audio.Media.TRACK} ASC"
 
@@ -102,6 +107,7 @@ class Library {
             val relPathColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.RELATIVE_PATH)
             val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
             val orderColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TRACK)
+            val trackIDColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
 
             val albumIDColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
             while (cursor.moveToNext()) {
@@ -116,6 +122,7 @@ class Library {
 
                 var trackOrderString = cursor.getStringOrNull(orderColumn)
                 val albumID = cursor.getLong(albumIDColumn)
+                val trackID = cursor.getLong(trackIDColumn)
 
                 val artistName = relPath.substringAfter("/").substringBefore("/")
                 val albumName = relPath.substringBeforeLast("/").substringAfterLast("/")
@@ -126,7 +133,7 @@ class Library {
                     trackOrderString = "0"
                 }
 
-                val curTrack = curAlbum.mapGetOrPut(name, fileName, trackOrderString)
+                val curTrack = curAlbum.mapGetOrPut(name, fileName, trackOrderString, trackID)
 
                 if(curAlbum.coverImage == Uri.EMPTY) {
                     try {
@@ -197,11 +204,67 @@ class Library {
         val curArtist = artistMap.getOrPut(artistName) { Artist(artistName) }
         val curAlbum = curArtist.mapGetOrPut(albumName)
 
-        val curTrack = curAlbum.mapGetOrPut(trackName?: "", fileName, trackOrder)
+        val curTrack = curAlbum.mapGetOrPut(trackName?: "", fileName, trackOrder, 0)
+
+        // TODO Downloaded tracks are missing their file ID and cant be removed before restart
 
         if(curAlbum.coverImage == Uri.EMPTY) {
             // TODO New albums wont have cover image loaded until app restart
         }
+
+    }
+
+    fun removeLocalArtist(context: Activity, name: String){
+        val locArtist = artistMap[name]
+
+        if(locArtist == null){
+            // TODO throw error
+            return
+        }
+
+        for(album in locArtist.albumList){
+            locArtist.removeLocalAlbum(context, album.name)?.let { delList.addAll(it) }
+        }
+        // TODO empty directory remains
+    }
+
+    fun removeLocalAlbum(context: Activity, name: String, artistName: String){
+        artistMap[artistName]?.removeLocalAlbum(context, name)?.let { delList.addAll(it) }
+    }
+    fun removeLocalTrack(context: Activity, name: String, artistName: String, albumName: String){
+        artistMap[artistName]?.get(albumName)?.removeLocalTrack(context, name)?.let { delList.add(it) }
+    }
+
+    fun execDeleteReq(context: Activity){
+        if(delList.isEmpty()){
+            return
+        }
+        val resolver = context.contentResolver
+
+        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.R){
+            try{
+                val deleteRequest = MediaStore.createDeleteRequest(
+                    resolver,
+                    delList
+                )
+
+                context.startIntentSenderForResult(
+                    deleteRequest.intentSender,
+                    REQUEST_PERMISSION_CODE,
+                    null,
+                    0,
+                    0,
+                    0
+                )
+            }catch (e: Exception){
+                println(e.message)
+
+            }
+        } else{
+            println("Pre Android R")
+            // TODO different deletion implementation
+        }
+
 
     }
 
@@ -212,6 +275,7 @@ class Library {
     fun buildDiff(remoteLibJson: JsonArray): Library{
 
         val diffLib = Library()
+        val mapList = mutableListOf<String>()
 
         remoteLibJson.forEach { elem ->
             val artistJson = elem.jsonObject
@@ -221,13 +285,20 @@ class Library {
                 if(artistDiff != null && !artistDiff.isEmpty()){
                     diffLib.addArtist(artistDiff)
                 }
-                //println("changed artist contents for " + artistJson["name"]!!.jsonPrimitive.content)
+                mapList.add(locArtist.name)
             }else{
                 diffLib.addArtist(Artist(artistJson))
             }
         }
 
-        diffLib.libBuilt = true;
+        for(key in artistMap.keys){
+            if(!mapList.contains(key)){
+                diffLib.addArtist(Artist(key))
+                diffLib.get(key)!!.toBeRemoved = true
+            }
+        }
+
+        diffLib.libBuilt = true
         return diffLib
     }
 

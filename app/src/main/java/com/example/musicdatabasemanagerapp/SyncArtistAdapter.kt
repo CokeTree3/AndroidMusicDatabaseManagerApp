@@ -41,7 +41,14 @@ class SyncArtistAdapter(private val dataList: List<LibraryData>): RecyclerView.A
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         val element = dataList[position]
         holder as ViewHolder
-        holder.name.text = element.name
+
+
+        if(element.toBeRemoved){
+            val dispText = element.name + "  !(To Be Removed)!"
+            holder.name.text = dispText
+        }else{
+            holder.name.text = element.name
+        }
 
         if(!element.isEmpty()){
             holder.expandIcon.visibility = View.VISIBLE

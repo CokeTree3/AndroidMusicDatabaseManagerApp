@@ -12,6 +12,7 @@ class Track : LibraryData {
     override var name: String = ""
     var order: Int = 0
     var fileName: String = ""
+    @Transient var id: Long = 0
     @Transient override var toBeRemoved: Boolean = false
     @Transient override val type = ClassType.TRACK
 
@@ -19,15 +20,17 @@ class Track : LibraryData {
         this.name = name
     }
 
-    constructor(name: String, fileName: String, order: Int){
+    constructor(name: String, fileName: String, order: Int, id: Long){
         this.name = name
         this.fileName = fileName
         this.order = order
+        this.id = id
     }
 
-    constructor(name: String, fileName: String, order: String){
+    constructor(name: String, fileName: String, order: String, id: Long){
         this.name = name
         this.fileName = fileName
+        this.id = id
         if(order.isDigitsOnly()){
             if(order.length == 4){
                 this.order = order.removeRange(0,1).toInt()
